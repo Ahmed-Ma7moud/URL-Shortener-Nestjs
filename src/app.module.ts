@@ -9,6 +9,7 @@ import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/guards/jwt-auth.guard';
 import { APP_GUARD } from '@nestjs/core';
 import { UserModule } from './user/user.module';
+import { BlacklistGuard } from './auth/guards/blacklist.guard';
 
 @Module({
   imports: [
@@ -24,6 +25,10 @@ import { UserModule } from './user/user.module';
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
+    },
+    {
+      provide: APP_GUARD,
+      useClass: BlacklistGuard,
     },
   ],
 })

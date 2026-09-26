@@ -11,10 +11,11 @@ import { UserRole } from '../user/enums/user-roles.enum';
 import { RegisterDto } from './dto/register.dto';
 import { RedisService } from '../redis/redis.service';
 import { ConfigService } from '@nestjs/config';
-import { JwtService } from '@nestjs/jwt';
+import { JwtService, JwtSignOptions } from '@nestjs/jwt';
 import { IAuthUser, IJwtPayload } from './interfaces/auth.interface';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
+import { v7 as uuidv7 } from 'uuid';
 
 @Injectable()
 export class AuthService {
@@ -44,10 +45,17 @@ export class AuthService {
   }
 
   async generateJwt(user: UserEntity): Promise<string> {
-    const payload: Partial<IJwtPayload> = { sub: user.id, role: user.role };
+    const payload: Partial<IJwtPayload> = {
+      sub: user.id,
+      role: user.role,
+      jti: uuidv7(),
+    };
+    const expiresIn = this.configService.get<JwtSignOptions['expiresIn']>(
+      'JWT_ACCESS_EXPIRES_IN',
+    );
     const token = await this.jwtService.signAsync(payload, {
       secret: this.configService.get('JWT_ACCESS_SECRET'),
-      expiresIn: '1d',
+      expiresIn,
     });
     return token;
   }
@@ -217,5 +225,14 @@ export class AuthService {
     );
     await this.redisService.del(`reset-password-token:${hashedToken}`);
     return { message: 'Password reset successfully' };
+  }
+
+  async logout(user: IAuthUser): Promise<{ message: string }> {
+    if (!user) {
+      throw new UnauthorizedException('User not authenticated');
+    }
+    const remainingTTL = user.exp - Math.floor(Date.now() / 1000);
+    await this.redisService.set(`blacklist:${user.jti}`, true, remainingTTL);
+    return { message: 'Logged out successfully' };
   }
 }

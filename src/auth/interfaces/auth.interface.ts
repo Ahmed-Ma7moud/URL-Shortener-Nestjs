@@ -3,6 +3,7 @@ export class IAuthUser {
   role: string;
   iat: number;
   exp: number;
+  jti: string;
 }
 
 export interface IJwtPayload {
@@ -10,4 +11,5 @@ export interface IJwtPayload {
   role: string;
   iat: number;
   exp: number;
+  jti: string;
 }
