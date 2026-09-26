@@ -23,7 +23,7 @@ export class AuthController {
   @Public()
   async verifyOtp(
     @Body() verifyOtpDto: VerifyOtpDto,
-  ): Promise<{ message: string; token: string }> {
+  ): Promise<{ message: string; accessToken: string, refreshToken: string }> {
     const { email, otp } = verifyOtpDto;
     return this.authService.verifyRegisterOtp(email, otp);
   }
@@ -32,7 +32,7 @@ export class AuthController {
   @Public()
   async login(
     @Body() loginDto: LoginDto,
-  ): Promise<{ message: string; token: string }> {
+  ): Promise<{ message: string; accessToken: string, refreshToken: string }> {
     const { email, password } = loginDto;
     return this.authService.login(email, password);
   }
@@ -65,7 +65,7 @@ export class AuthController {
   }
   
   @Post('logout')
-  async logout(@AuthUser() user: IAuthUser): Promise<{ message: string }> {
-    return this.authService.logout(user);
+  async logout(@AuthUser() user: IAuthUser, @Body('refreshToken') refreshToken: string): Promise<{ message: string }> {
+    return this.authService.logout(user, refreshToken);
   }
 }

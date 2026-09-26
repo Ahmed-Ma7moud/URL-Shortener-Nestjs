@@ -6,9 +6,13 @@ import { AuthController } from './auth.controller';
 import { UserEntity } from '../user/entities/user.entity';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { JwtModule } from '@nestjs/jwt';
-
+import { RefreshTokenEntity } from './entities/refresh-token.entity';
 @Module({
-  imports: [PassportModule, TypeOrmModule.forFeature([UserEntity]), JwtModule],
+  imports: [
+    PassportModule,
+    TypeOrmModule.forFeature([UserEntity, RefreshTokenEntity]),
+    JwtModule,
+  ],
 
   providers: [JwtStrategy, AuthService],
 

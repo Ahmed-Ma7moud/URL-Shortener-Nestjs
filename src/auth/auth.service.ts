@@ -2,11 +2,13 @@ import {
   Injectable,
   NotFoundException,
   UnauthorizedException,
+  ForbiddenException,
   ConflictException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { UserEntity } from '../user/entities/user.entity';
+import { RefreshTokenEntity } from './entities/refresh-token.entity';
 import { UserRole } from '../user/enums/user-roles.enum';
 import { RegisterDto } from './dto/register.dto';
 import { RedisService } from '../redis/redis.service';
@@ -16,19 +18,24 @@ import { IAuthUser, IJwtPayload } from './interfaces/auth.interface';
 import * as bcrypt from 'bcrypt';
 import * as crypto from 'crypto';
 import { v7 as uuidv7 } from 'uuid';
+import { Cron, CronExpression } from '@nestjs/schedule';
+import { promises } from 'dns';
 
 @Injectable()
 export class AuthService {
+  private readonly REFRESH_TOKEN_TTL = 7 * 24 * 60 * 60 * 1000; // 7 days in ms
   constructor(
     @InjectRepository(UserEntity)
-    private readonly userRepository: Repository<UserEntity>,
+    private readonly userRepo: Repository<UserEntity>,
+    @InjectRepository(RefreshTokenEntity)
+    private readonly refreshTokenRepo: Repository<RefreshTokenEntity>,
     private readonly jwtService: JwtService,
     private readonly redisService: RedisService,
     private readonly configService: ConfigService,
   ) {}
 
   async isEmailTaken(email: string): Promise<boolean> {
-    const user = await this.userRepository.findOne({ where: { email } });
+    const user = await this.userRepo.findOne({ where: { email } });
     return !!user;
   }
 
@@ -60,6 +67,19 @@ export class AuthService {
     return token;
   }
 
+  async generateRefreshToken(user: UserEntity): Promise<string> {
+    const refreshToken = this.generateRandomBytes(32);
+    const hashedToken = this.createHash(refreshToken);
+    const expiresAt = new Date(Date.now() + this.REFRESH_TOKEN_TTL); // 7 days
+    const refreshTokenEntity = this.refreshTokenRepo.create({
+      userId: user.id,
+      token: hashedToken,
+      expiresAt,
+    });
+    await this.refreshTokenRepo.save(refreshTokenEntity);
+    return refreshToken;
+  }
+
   async register(body: RegisterDto): Promise<{ message: string }> {
     const { email, password, name } = body;
     const isEmailTaken = await this.isEmailTaken(email);
@@ -84,7 +104,7 @@ export class AuthService {
   async verifyRegisterOtp(
     email: string,
     otp: string,
-  ): Promise<{ message: string; token: string }> {
+  ): Promise<{ message: string; accessToken: string, refreshToken: string }> {
     const data = await this.redisService.get(`register:${email}`);
     if (!data) {
       throw new NotFoundException('No registration data found or OTP expired');
@@ -103,16 +123,18 @@ export class AuthService {
       await this.redisService.set(`register:${email}`, data, remainingTTL);
       throw new UnauthorizedException('Invalid OTP. Please try again.');
     }
-    const user = this.userRepository.create({
+    const user = this.userRepo.create({
       email: data.email,
       password: data.password,
       name: data.name,
       role: UserRole.USER,
     });
-    await this.userRepository.save(user);
+    await this.userRepo.save(user);
     await this.redisService.del(`register:${email}`);
-    const token = await this.generateJwt(user);
-    return { message: 'Registration successful', token };
+    const accessToken = await this.generateJwt(user);
+
+    const refreshToken = await this.generateRefreshToken(user);
+    return { message: 'Registration successful', accessToken, refreshToken };
   }
 
   async canVerifyRegisterOtp(email: string): Promise<boolean> {
@@ -126,8 +148,8 @@ export class AuthService {
   async login(
     email: string,
     password: string,
-  ): Promise<{ message: string; token: string }> {
-    const user = await this.userRepository.findOne({ where: { email } });
+  ): Promise<{ message: string; accessToken: string, refreshToken: string }> {
+    const user = await this.userRepo.findOne({ where: { email } });
     if (!user) {
       throw new UnauthorizedException('Invalid email or password');
     }
@@ -135,12 +157,54 @@ export class AuthService {
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid email or password');
     }
-    const token = await this.generateJwt(user);
-    return { message: 'Login successful', token };
+    const accessToken = await this.generateJwt(user);
+    const refreshToken = await this.generateRefreshToken(user);
+    
+    return { message: 'Login successful', accessToken, refreshToken };
+  }
+
+  async refreshAccessToken(refreshToken: string) {
+    const hashToken = this.createHash(refreshToken);
+    const storedToken = await this.refreshTokenRepo.findOne({
+      where: { token: hashToken },
+    });
+    if (!storedToken) {
+      throw new ForbiddenException("Refresh token doesn't exist");
+    }
+
+    if (storedToken.expiresAt && storedToken.expiresAt < new Date()) {
+      await this.refreshTokenRepo.remove(storedToken);
+      throw new ForbiddenException('Refresh token has expired');
+    }
+
+    const user = await this.userRepo.findOne({
+      where: { id: storedToken.userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const newAccessToken = await this.generateJwt(user);
+
+    if (storedToken.expiresAt) {
+      storedToken.expiresAt = new Date(Date.now() + this.REFRESH_TOKEN_TTL);
+      await this.refreshTokenRepo.save(storedToken);
+    }
+
+    return { accessToken: newAccessToken };
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_4AM)
+  async removeExpiredRefreshTokens() {
+    const now = new Date();
+    await this.refreshTokenRepo.delete({
+      expiresAt: LessThan(now),
+    });
   }
 
   async forgetPassword(email: string): Promise<{ message: string }> {
-    const user = await this.userRepository.findOne({ where: { email } });
+    const user = await this.userRepo.findOne({ where: { email } });
     if (!user) {
       throw new NotFoundException('Email not found');
     }
@@ -186,7 +250,7 @@ export class AuthService {
       );
       throw new UnauthorizedException('Invalid OTP. Please try again.');
     }
-    const user = await this.userRepository.findOne({ where: { email } });
+    const user = await this.userRepo.findOne({ where: { email } });
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
@@ -212,27 +276,47 @@ export class AuthService {
     if (!data) {
       throw new UnauthorizedException('Invalid or expired token');
     }
-    const user = await this.userRepository.findOne({
+    const user = await this.userRepo.findOne({
       where: { id: data.userId },
     });
     if (!user) {
       throw new NotFoundException('User not found');
     }
     const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await this.userRepository.update(
-      { id: user.id },
-      { password: hashedPassword },
-    );
+    await this.userRepo.update({ id: user.id }, { password: hashedPassword });
     await this.redisService.del(`reset-password-token:${hashedToken}`);
     return { message: 'Password reset successfully' };
   }
 
-  async logout(user: IAuthUser): Promise<{ message: string }> {
+  async logout(
+    user: IAuthUser,
+    refreshToken: string,
+  ): Promise<{ message: string }> {
     if (!user) {
       throw new UnauthorizedException('User not authenticated');
     }
+    if (!refreshToken) {
+      throw new UnauthorizedException('Refresh token is required');
+    }
+    const hashedToken = this.createHash(refreshToken);
+    const storedToken = await this.refreshTokenRepo.findOne({
+      where: { token: hashedToken, userId: user.id },
+    });
+    if (!storedToken) {
+      throw new ForbiddenException(
+        "Refresh token doesn't exist or doesn't belong to the user",
+      );
+    }
+    await this.refreshTokenRepo.remove(storedToken);
     const remainingTTL = user.exp - Math.floor(Date.now() / 1000);
     await this.redisService.set(`blacklist:${user.jti}`, true, remainingTTL);
     return { message: 'Logged out successfully' };
+  }
+
+  async logoutAll(user: IAuthUser): Promise<{ message: string }> {
+    await this.refreshTokenRepo.delete({ userId: user.id });
+    const remainingTTL = user.exp - Math.floor(Date.now() / 1000);
+    await this.redisService.set(`blacklist:${user.jti}`, true, remainingTTL);
+    return { message: 'Logged out from all devices successfully' };
   }
 }
