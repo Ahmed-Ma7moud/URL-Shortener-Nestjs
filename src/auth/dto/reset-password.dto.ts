@@ -7,7 +7,7 @@ export class ResetPasswordDto {
 
   @IsNotEmpty()
   @IsString()
-  @MinLength(6)
-  @MaxLength(50)
+  @MinLength(6, { message: 'New password must be at least 6 characters long' })
+  @MaxLength(50, { message: 'New password must not exceed 50 characters' })
   newPassword: string;
 }

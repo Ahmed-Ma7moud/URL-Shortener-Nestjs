@@ -104,7 +104,7 @@ export class AuthService {
   async verifyRegisterOtp(
     email: string,
     otp: string,
-  ): Promise<{ message: string; accessToken: string, refreshToken: string }> {
+  ): Promise<{ message: string; accessToken: string; refreshToken: string }> {
     const data = await this.redisService.get(`register:${email}`);
     if (!data) {
       throw new NotFoundException('No registration data found or OTP expired');
@@ -148,7 +148,7 @@ export class AuthService {
   async login(
     email: string,
     password: string,
-  ): Promise<{ message: string; accessToken: string, refreshToken: string }> {
+  ): Promise<{ message: string; accessToken: string; refreshToken: string }> {
     const user = await this.userRepo.findOne({ where: { email } });
     if (!user) {
       throw new UnauthorizedException('Invalid email or password');
@@ -159,7 +159,7 @@ export class AuthService {
     }
     const accessToken = await this.generateJwt(user);
     const refreshToken = await this.generateRefreshToken(user);
-    
+
     return { message: 'Login successful', accessToken, refreshToken };
   }
 
@@ -286,6 +286,29 @@ export class AuthService {
     await this.userRepo.update({ id: user.id }, { password: hashedPassword });
     await this.redisService.del(`reset-password-token:${hashedToken}`);
     return { message: 'Password reset successfully' };
+  }
+
+  async changePassword(
+    authUser: IAuthUser,
+    oldPassword: string,
+    newPassword: string,
+  ): Promise<{ message: string }> {
+    const user = await this.userRepo.findOne({ where: { id: authUser.id } });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    if (!isMatch) {
+      throw new UnauthorizedException('Old password is incorrect');
+    }
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await this.userRepo.save(user);
+
+    await this.refreshTokenRepo.delete({ userId: user.id });
+    const remainingTTL = authUser.exp - Math.floor(Date.now() / 1000);
+    await this.redisService.set(`blacklist:${authUser.jti}`, true, remainingTTL);
+    return { message: 'Password changed successfully' };
   }
 
   async logout(

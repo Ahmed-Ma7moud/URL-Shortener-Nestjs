@@ -8,6 +8,7 @@ import { ForgetPasswordDto } from './dto/forget-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { IAuthUser } from './interfaces/auth.interface';
 import { AuthUser } from './decorators/user.decorator';
+import { ChangePasswordDto } from './dto/change-password.dto';
 
 @Controller('api/auth')
 export class AuthController {
@@ -64,6 +65,14 @@ export class AuthController {
     return this.authService.resetPassword(token, newPassword);
   }
   
+  @Post('change-password')
+  async changePassword(
+    @AuthUser() user: IAuthUser,
+    @Body() { oldPassword, newPassword }: ChangePasswordDto,
+  ): Promise<{ message: string }> {
+    return this.authService.changePassword(user, oldPassword, newPassword);
+  }
+
   @Post('logout')
   async logout(@AuthUser() user: IAuthUser, @Body('refreshToken') refreshToken: string): Promise<{ message: string }> {
     return this.authService.logout(user, refreshToken);
