@@ -24,6 +24,10 @@ export class BlacklistGuard implements CanActivate {
       throw new UnauthorizedException('Token has been revoked');
     }
 
+    const isDeleted = await this.redisService.get(`deleted:${user.id}`);
+    if (isDeleted) {
+      throw new UnauthorizedException('User account has been deleted');
+    }
     return true;
   }
 }
