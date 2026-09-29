@@ -4,7 +4,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, DataSource } from 'typeorm';
 import { UserEntity } from './entities/user.entity';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { RedisService } from '../redis/redis.service';
@@ -16,6 +16,7 @@ export class UserService {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly redisService: RedisService,
+    private readonly dataSource: DataSource,
   ) {}
 
   async findOne(id: string): Promise<{ data: Partial<UserEntity> } | null> {
@@ -31,7 +32,6 @@ export class UserService {
     id: string,
     body: UpdateUserProfileDto,
   ): Promise<{ data: Partial<UserEntity> }> {
-
     const user = await this.userRepo.findOne({ where: { id } });
     if (!user) {
       throw new UnauthorizedException('User not found');
@@ -45,13 +45,27 @@ export class UserService {
   }
 
   async deleteProfile(authUser: IAuthUser): Promise<{ message: string }> {
-    const user = await this.userRepo.findOne({ where: { id: authUser.id } });
-    if (!user) {
-      throw new UnauthorizedException('User not found');
-    }
-    await this.userRepo.remove(user);
+    await this.dataSource.transaction(async (manager) => {
+      const user = await manager.findOne(UserEntity, {
+        where: { id: authUser.id },
+      });
+
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+
+      user.email = `del-${Date.now()}-${user.email}`;
+
+      await manager.save(UserEntity, user);
+      await manager.softRemove(UserEntity, user);
+    });
+
     const remainingTtl = authUser.exp - Math.floor(Date.now() / 1000);
-    await this.redisService.set(`deleted:${authUser.id}`, true, remainingTtl);
+
+    if (remainingTtl > 0) {
+      await this.redisService.set(`deleted:${authUser.id}`, true, remainingTtl);
+    }
+
     return { message: 'User profile deleted successfully' };
   }
 }
