@@ -32,23 +32,14 @@ export class UserService {
     body: UpdateUserProfileDto,
   ): Promise<{ data: Partial<UserEntity> }> {
 
-    console.log('UpdateUserProfileDto received:', body);
-    const updateData = Object.fromEntries(
-      Object.entries(body).filter(([_, value]) => value !== undefined),
-    );
-
-    if (Object.keys(updateData).length === 0) {
-      throw new BadRequestException('No data provided for update');
-    }
-
     const user = await this.userRepo.findOne({ where: { id } });
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
 
-    Object.assign(user, updateData);
+    Object.assign(user, body);
     await this.userRepo.save(user);
-    
+
     const { password, ...userWithoutPassword } = user;
     return { data: userWithoutPassword };
   }
