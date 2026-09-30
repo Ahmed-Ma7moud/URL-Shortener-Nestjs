@@ -32,5 +32,5 @@ export class UserEntity {
   updatedAt: Date;
 
   @DeleteDateColumn()
-  deletedAt: Date
+  deletedAt: Date;
 }

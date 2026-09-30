@@ -20,6 +20,6 @@ export class UserController {
 
   @Delete()
   async deleteProfile(@AuthUser() user: IAuthUser) {
-    return this.userService.deleteProfile(user);
+    return this.userService.deleteProfile(user.id);
   }
 }

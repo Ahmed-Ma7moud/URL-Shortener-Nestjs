@@ -9,7 +9,14 @@ import { UserEntity } from './entities/user.entity';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { RedisService } from '../redis/redis.service';
 import { IAuthUser } from '../auth/interfaces/auth.interface';
-
+import { CreateUserDto } from './dto/create-user.dto';
+import { PaginationDto } from '../common/dto/pagination.dto';
+import * as pagination from '../common/utils/pagination.util';
+import { PaginationMetadata } from '../common/interface/common.interface';
+import ms, { StringValue } from 'ms';
+import { AuthService } from '../auth/auth.service';
+import { ConfigService } from '@nestjs/config';
+import { UserRole } from './enums/user-roles.enum';
 @Injectable()
 export class UserService {
   constructor(
@@ -17,7 +24,45 @@ export class UserService {
     private readonly userRepo: Repository<UserEntity>,
     private readonly redisService: RedisService,
     private readonly dataSource: DataSource,
+    private readonly authService: AuthService,
+    private readonly configService: ConfigService,
   ) {}
+
+  async create(
+    createUserDto: CreateUserDto,
+  ): Promise<{ data: Partial<UserEntity> }> {
+    try {
+      const user = this.userRepo.create(createUserDto);
+      await this.userRepo.save(user);
+      const { password, ...userWithoutPassword } = user;
+      return { data: userWithoutPassword };
+    } catch (error: any) {
+      if (error.code === '23505') {
+        throw new BadRequestException('Email already exists');
+      }
+      throw new BadRequestException('Failed to create user');
+    }
+  }
+
+  async findAll(query: PaginationDto): Promise<{
+    data: Partial<UserEntity>[];
+    metadata: PaginationMetadata;
+  }> {
+    const { page, limit, skip } = pagination.parsePage(query);
+
+    const [users, totalCount] = await this.userRepo
+      .createQueryBuilder('user')
+      .select(['user.id', 'user.email', 'user.name', 'user.role'])
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
+
+    const usersWithoutPasswords = users.map(({ password, ...user }) => user);
+    return {
+      data: usersWithoutPasswords,
+      metadata: pagination.buildPagination(page, limit, totalCount),
+    };
+  }
 
   async findOne(id: string): Promise<{ data: Partial<UserEntity> } | null> {
     const user = await this.userRepo.findOne({ where: { id } });
@@ -32,6 +77,11 @@ export class UserService {
     id: string,
     body: UpdateUserProfileDto,
   ): Promise<{ data: Partial<UserEntity> }> {
+
+    if (Object.keys(body).length === 0) {
+      throw new BadRequestException('No data provided for update');
+    }
+
     const user = await this.userRepo.findOne({ where: { id } });
     if (!user) {
       throw new UnauthorizedException('User not found');
@@ -44,10 +94,10 @@ export class UserService {
     return { data: userWithoutPassword };
   }
 
-  async deleteProfile(authUser: IAuthUser): Promise<{ message: string }> {
+  async deleteProfile(userId:string): Promise<{ message: string }> {
     await this.dataSource.transaction(async (manager) => {
       const user = await manager.findOne(UserEntity, {
-        where: { id: authUser.id },
+        where: { id: userId },
       });
 
       if (!user) {
@@ -58,14 +108,33 @@ export class UserService {
 
       await manager.save(UserEntity, user);
       await manager.softRemove(UserEntity, user);
+      await this.authService.revokeAllRefreshTokens(userId);
     });
 
-    const remainingTtl = authUser.exp - Math.floor(Date.now() / 1000);
+    const expiresInString =
+      this.configService.getOrThrow<string>('JWT_ACCESS_EXPIRES_IN') || '1d';
+    const remainingTtl = Math.ceil(ms(expiresInString as StringValue) / 1000);
 
     if (remainingTtl > 0) {
-      await this.redisService.set(`deleted:${authUser.id}`, true, remainingTtl);
+      await this.redisService.set(`deleted:${userId}`, true, remainingTtl);
     }
 
     return { message: 'User profile deleted successfully' };
+  }
+
+  async updateUserRole(
+    id: string,
+    role: UserRole,
+  ): Promise<{ data: Partial<UserEntity> }> {
+    const user = await this.userRepo.findOne({ where: { id } });
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    user.role = role;
+    await this.userRepo.save(user);
+
+    const { password, ...userWithoutPassword } = user;
+    return { data: userWithoutPassword };
   }
 }
