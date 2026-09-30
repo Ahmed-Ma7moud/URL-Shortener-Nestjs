@@ -13,7 +13,7 @@ import { BlacklistGuard } from './auth/guards/blacklist.guard';
 import { RateLimiterModule } from './rate-limiter/rate-limiter.module';
 import { RateLimiterGuard } from './rate-limiter/guards/rate-limit.guard';
 import { ThrottlerExceptionFilter } from './rate-limiter/filters/throttler-exception.filter';
-
+import { UrlModule } from './url/url.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
@@ -21,6 +21,7 @@ import { ThrottlerExceptionFilter } from './rate-limiter/filters/throttler-excep
     RedisModule,
     AuthModule,
     UserModule,
+    UrlModule,
     RateLimiterModule,
   ],
   controllers: [AppController],
