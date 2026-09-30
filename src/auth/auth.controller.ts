@@ -9,6 +9,7 @@ import { LoginDto } from './dto/login.dto';
 import { IAuthUser } from './interfaces/auth.interface';
 import { AuthUser } from './decorators/user.decorator';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 
 @Controller('api/auth')
 export class AuthController {
@@ -36,6 +37,13 @@ export class AuthController {
   ): Promise<{ message: string; accessToken: string, refreshToken: string }> {
     const { email, password } = loginDto;
     return this.authService.login(email, password);
+  }
+
+  @Post('refresh-token')
+  async refreshAccessToken(
+    @Body() body: RefreshTokenDto,
+  ): Promise<{ accessToken: string }> {
+    return this.authService.refreshAccessToken(body.refreshToken);
   }
 
   @Post('forgot-password')

@@ -17,8 +17,6 @@ export class AuthorizationGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest();
 
-    // const lang = request.headers?.lang;
-    console.log('AuthorizationGuard: canActivate called');
     const user = request.user;
 
     const roles = this.reflector.getAllAndOverride<string[]>(USER_ROLES_KEY, [

@@ -80,6 +80,11 @@ export class AuthService {
     return refreshToken;
   }
 
+  async revokeAllRefreshTokens(userId: string): Promise<{message: string}> {
+    await this.refreshTokenRepo.delete({ userId });
+    return { message: 'All refresh tokens revoked successfully' };
+  }
+
   async register(body: RegisterDto): Promise<{ message: string }> {
     const { email, password, name } = body;
     const isEmailTaken = await this.isEmailTaken(email);

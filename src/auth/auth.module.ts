@@ -18,6 +18,6 @@ import { RefreshTokenEntity } from './entities/refresh-token.entity';
 
   controllers: [AuthController],
 
-  exports: [PassportModule],
+  exports: [PassportModule, AuthService],
 })
 export class AuthModule {}
