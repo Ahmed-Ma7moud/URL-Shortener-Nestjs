@@ -1,98 +1,162 @@
-<p align="center">
-  <a href="http://nestjs.com/" target="blank"><img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" /></a>
-</p>
+# URL Shortener API
 
-[circleci-image]: https://img.shields.io/circleci/build/github/nestjs/nest/master?token=abc123def456
-[circleci-url]: https://circleci.com/gh/nestjs/nest
+A URL-shortening service built with NestJS, TypeScript, PostgreSQL, and Redis. Authenticated users can create, manage, and redirect short links. The API also includes refresh-token authentication, role-based admin user management, request validation, rate limiting, and Swagger documentation.
 
-  <p align="center">A progressive <a href="http://nodejs.org" target="_blank">Node.js</a> framework for building efficient and scalable server-side applications.</p>
-    <p align="center">
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/v/@nestjs/core.svg" alt="NPM Version" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/l/@nestjs/core.svg" alt="Package License" /></a>
-<a href="https://www.npmjs.com/~nestjscore" target="_blank"><img src="https://img.shields.io/npm/dm/@nestjs/common.svg" alt="NPM Downloads" /></a>
-<a href="https://circleci.com/gh/nestjs/nest" target="_blank"><img src="https://img.shields.io/circleci/build/github/nestjs/nest/master" alt="CircleCI" /></a>
-<a href="https://discord.gg/G7Qnnhy" target="_blank"><img src="https://img.shields.io/badge/discord-online-brightgreen.svg" alt="Discord"/></a>
-<a href="https://opencollective.com/nest#backer" target="_blank"><img src="https://opencollective.com/nest/backers/badge.svg" alt="Backers on Open Collective" /></a>
-<a href="https://opencollective.com/nest#sponsor" target="_blank"><img src="https://opencollective.com/nest/sponsors/badge.svg" alt="Sponsors on Open Collective" /></a>
-  <a href="https://paypal.me/kamilmysliwiec" target="_blank"><img src="https://img.shields.io/badge/Donate-PayPal-ff3f59.svg" alt="Donate us"/></a>
-    <a href="https://opencollective.com/nest#sponsor"  target="_blank"><img src="https://img.shields.io/badge/Support%20us-Open%20Collective-41B883.svg" alt="Support us"></a>
-  <a href="https://twitter.com/nestframework" target="_blank"><img src="https://img.shields.io/twitter/follow/nestframework.svg?style=social&label=Follow" alt="Follow us on Twitter"></a>
-</p>
-  <!--[![Backers on Open Collective](https://opencollective.com/nest/backers/badge.svg)](https://opencollective.com/nest#backer)
-  [![Sponsors on Open Collective](https://opencollective.com/nest/sponsors/badge.svg)](https://opencollective.com/nest#sponsor)-->
+## Features
 
-## Description
+- User registration with OTP verification, login, logout, token refresh, and password reset
+- JWT access tokens and persistent refresh tokens
+- Create, list, update, and delete user-owned short URLs
+- Public redirects with Redis caching
+- Admin-only user creation, listing, role updates, and deletion
+- PostgreSQL migrations managed with TypeORM
+- Redis-backed OTP, redirect cache, JWT blacklist, and rate-limit storage
+- Swagger/OpenAPI documentation
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+## Requirements
 
-## Project setup
+- Node.js 22 or newer
+- npm
+- PostgreSQL 16
+- Redis 7
+- Docker and Docker Compose (optional, for the complete local stack)
 
-```bash
-$ npm install
+## Configuration
+
+Create a `.env` file in the project root:
+
+```dotenv
+PORT=3000
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_NAME=url_shortener
+REDIS_HOST=localhost
+REDIS_PORT=6379
+DOMAIN=http://localhost:3000
+JWT_ACCESS_SECRET=replace-with-a-long-random-secret
+JWT_ACCESS_EXPIRES_IN=15m
 ```
 
-## Compile and run the project
+`DOMAIN` is used when the API returns a shortened URL. Keep it aligned with the public address of the running API. Do not commit real secrets to source control.
+
+## Quick start with Docker
+
+Docker Compose starts the API, PostgreSQL, Redis, and a one-shot migration service:
 
 ```bash
-# development
-$ npm run start
-
-# watch mode
-$ npm run start:dev
-
-# production mode
-$ npm run start:prod
+docker compose up --build
 ```
 
-## Run tests
+The API is available at `http://localhost:3000` (or the port configured in `.env`). Stop the stack with:
 
 ```bash
-# unit tests
-$ npm run test
-
-# e2e tests
-$ npm run test:e2e
-
-# test coverage
-$ npm run test:cov
+docker compose down
 ```
 
-## Deployment
+Named volumes preserve PostgreSQL and Redis data. Add `-v` only when you intentionally want to delete that data.
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+## Local development
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+Start PostgreSQL and Redis, then install dependencies, apply migrations, and run the API:
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+npm install
+npm run migration:run
+npm run start:dev
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+Other useful commands:
 
-## Resources
+```bash
+npm run build
+npm run start:prod
+npm run migration:revert
+npm run migration:generate -- src/migrations/describe-change
+```
 
-Check out a few resources that may come in handy when working with NestJS:
+## API documentation
 
-- Visit the [NestJS Documentation](https://docs.nestjs.com) to learn more about the framework.
-- For questions and support, please visit our [Discord channel](https://discord.gg/G7Qnnhy).
-- To dive deeper and get more hands-on experience, check out our official video [courses](https://courses.nestjs.com/).
-- Deploy your application to AWS with the help of [NestJS Mau](https://mau.nestjs.com) in just a few clicks.
-- Visualize your application graph and interact with the NestJS application in real-time using [NestJS Devtools](https://devtools.nestjs.com).
-- Need help with your project (part-time to full-time)? Check out our official [enterprise support](https://enterprise.nestjs.com).
-- To stay in the loop and get updates, follow us on [X](https://x.com/nestframework) and [LinkedIn](https://linkedin.com/company/nestjs).
-- Looking for a job, or have a job to offer? Check out our official [Jobs board](https://jobs.nestjs.com).
+Interactive Swagger documentation is available at `http://localhost:3000/api/docs`.
 
-## Support
+Protected endpoints require `Authorization: Bearer <access-token>`.
 
-Nest is an MIT-licensed open source project. It can grow thanks to the sponsors and support by the amazing backers. If you'd like to join them, please [read more here](https://docs.nestjs.com/support).
+### Authentication
 
-## Stay in touch
+| Method | Endpoint                     | Description                                |
+| ------ | ---------------------------- | ------------------------------------------ |
+| POST   | `/api/auth/register`         | Start registration and generate an OTP     |
+| POST   | `/api/auth/verify-otp`       | Verify registration OTP and receive tokens |
+| POST   | `/api/auth/login`            | Log in and receive tokens                  |
+| POST   | `/api/auth/refresh-token`    | Issue a new access token                   |
+| POST   | `/api/auth/forgot-password`  | Start password reset                       |
+| POST   | `/api/auth/verify-reset-otp` | Verify reset OTP                           |
+| POST   | `/api/auth/reset-password`   | Set a new password                         |
+| POST   | `/api/auth/change-password`  | Change the authenticated user's password   |
+| POST   | `/api/auth/logout`           | Revoke a refresh token                     |
 
-- Author - [Kamil Myśliwiec](https://twitter.com/kammysliwiec)
-- Website - [https://nestjs.com](https://nestjs.com/)
-- Twitter - [@nestframework](https://twitter.com/nestframework)
+### URLs
 
-## License
+| Method | Endpoint        | Description                        |
+| ------ | --------------- | ---------------------------------- |
+| POST   | `/api/urls`     | Create a short URL                 |
+| GET    | `/api/urls`     | List the authenticated user's URLs |
+| GET    | `/api/urls/:id` | Get one owned URL                  |
+| PATCH  | `/api/urls/:id` | Update one owned URL               |
+| DELETE | `/api/urls/:id` | Delete one owned URL               |
+| GET    | `/:shortCode`   | Redirect to the original URL       |
 
-Nest is [MIT licensed](https://github.com/nestjs/nest/blob/master/LICENSE).
+Pagination endpoints accept `page` and `limit`; `limit` is capped at 100.
+
+### Users and administration
+
+| Method | Endpoint                    | Access                     |
+| ------ | --------------------------- | -------------------------- |
+| GET    | `/api/users/me`             | Authenticated user profile |
+| PATCH  | `/api/users/me`             | Update own profile         |
+| DELETE | `/api/users/me`             | Delete own profile         |
+| POST   | `/api/admin/users`          | Admin only                 |
+| GET    | `/api/admin/users`          | Admin only                 |
+| GET    | `/api/admin/users/:id`      | Admin only                 |
+| PATCH  | `/api/admin/users/:id/role` | Admin only                 |
+| DELETE | `/api/admin/users/:id`      | Admin only                 |
+
+## Example request
+
+After verifying a user and copying the returned access token:
+
+```bash
+curl -X POST http://localhost:3000/api/urls \
+  -H 'Authorization: Bearer <access-token>' \
+  -H 'Content-Type: application/json' \
+  -d '{"originalUrl":"https://example.com/article"}'
+```
+
+The response contains a generated six-character `shortCode` and a public URL such as `http://localhost:3000/aB3xYz`.
+
+## OTP development note
+
+Email delivery is not configured yet. Registration and password-reset OTP values are logged by the API process for development and testing. OTP records expire after five minutes and failed verification is limited to three attempts.
+
+## Project structure
+
+```text
+src/
+  auth/          JWT authentication, OTP flows, guards, and DTOs
+  user/          User profiles and admin user management
+  url/           Short URL creation, management, and redirects
+  redis/         Redis connection and shared Redis service
+  rate-limiter/  Redis-backed throttling and exception handling
+  migrations/    TypeORM database migrations
+  common/        Shared DTOs, interfaces, and utilities
+```
+
+## Technology stack
+
+- NestJS 11 and TypeScript
+- TypeORM with PostgreSQL
+- Redis via ioredis
+- Passport JWT and bcrypt
+- class-validator and class-transformer
+- Swagger/OpenAPI
