@@ -8,7 +8,6 @@ import { Repository, DataSource } from 'typeorm';
 import { UserEntity } from './entities/user.entity';
 import { UpdateUserProfileDto } from './dto/update-user-profile.dto';
 import { RedisService } from '../redis/redis.service';
-import { IAuthUser } from '../auth/interfaces/auth.interface';
 import { CreateUserDto } from './dto/create-user.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 import * as pagination from '../common/utils/pagination.util';
@@ -17,6 +16,7 @@ import ms, { StringValue } from 'ms';
 import { AuthService } from '../auth/auth.service';
 import { ConfigService } from '@nestjs/config';
 import { UserRole } from './enums/user-roles.enum';
+import { JwtSignOptions } from '@nestjs/jwt';
 @Injectable()
 export class UserService {
   constructor(
@@ -77,7 +77,6 @@ export class UserService {
     id: string,
     body: UpdateUserProfileDto,
   ): Promise<{ data: Partial<UserEntity> }> {
-
     if (Object.keys(body).length === 0) {
       throw new BadRequestException('No data provided for update');
     }
@@ -94,7 +93,7 @@ export class UserService {
     return { data: userWithoutPassword };
   }
 
-  async deleteProfile(userId:string): Promise<{ message: string }> {
+  async deleteProfile(userId: string): Promise<{ message: string }> {
     await this.dataSource.transaction(async (manager) => {
       const user = await manager.findOne(UserEntity, {
         where: { id: userId },
@@ -131,8 +130,33 @@ export class UserService {
       throw new UnauthorizedException('User not found');
     }
 
+    if(user.role !== UserRole.USER) {
+      throw new BadRequestException('You can not change this user role');
+    }
+
+    if (user.role === role) {
+      throw new BadRequestException(
+        'Role is already set to the provided value',
+      );
+    }
+
     user.role = role;
-    await this.userRepo.save(user);
+    await this.dataSource.transaction(async (manager) => {
+      await manager.save(UserEntity, user);
+      // revoking all refresh tokens
+      await this.authService.revokeAllRefreshTokens(user.id);
+    });
+
+    const expiresIn = this.configService.getOrThrow<
+      JwtSignOptions['expiresIn']
+    >('JWT_ACCESS_EXPIRES_IN');
+    const ttl =
+      typeof expiresIn === 'number'
+        ? expiresIn
+        : Math.ceil(ms(expiresIn ?? '1d') / 1000);
+    const currentTime = Math.floor(Date.now() / 1000); // in seconds
+
+    await this.redisService.set(`blacklist:${user.id}`, currentTime, ttl);
 
     const { password, ...userWithoutPassword } = user;
     return { data: userWithoutPassword };
