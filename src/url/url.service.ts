@@ -3,6 +3,7 @@ import {
   InternalServerErrorException,
   BadRequestException,
   NotFoundException,
+  Inject,
 } from '@nestjs/common';
 import { UrlEntity } from './entities/url.entity';
 import { Repository } from 'typeorm';
@@ -11,12 +12,14 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 import * as pagination from '../common/utils/pagination.util';
 import { PaginationMetadata } from '../common/interface/common.interface';
 import { ConfigService } from '@nestjs/config';
-
+import Redis from 'ioredis';
 @Injectable()
 export class UrlService {
+  private readonly cacheTtl: number = 60 * 60; // Cache TTL in seconds (1 hour)
   constructor(
     @InjectRepository(UrlEntity) private urlRepo: Repository<UrlEntity>,
     private readonly configService: ConfigService,
+    @Inject('REDIS') private readonly redis: Redis,
   ) {}
 
   generateUrlCode(length: number): string {
@@ -34,7 +37,7 @@ export class UrlService {
     originalUrl: string,
     userId: string,
     maxRetries: number = 5,
-  ): Promise<{ message: string; url: string }> {
+  ): Promise<{ message: string; url: string, data: UrlEntity }> {
     const domain = this.configService.getOrThrow<string>('DOMAIN');
     if (maxRetries <= 0) {
       throw new Error(
@@ -55,6 +58,7 @@ export class UrlService {
       return {
         message: 'URL shortened successfully',
         url: `${domain}/${shortCode}`,
+        data: urlEntity,
       };
     } catch (error: any) {
       if (error.code === '23505') {
@@ -66,10 +70,20 @@ export class UrlService {
   }
 
   async redirect(shortCode: string): Promise<{ originalUrl: string }> {
+    const originalUrl = await this.redis.get(`urls:${shortCode}`);
+    if (originalUrl) {
+      return { originalUrl };
+    }
     const urlEntity = await this.urlRepo.findOne({ where: { shortCode } });
     if (!urlEntity) {
       throw new BadRequestException('Invalid URL');
     }
+    await this.redis.set(
+      `urls:${shortCode}`,
+      urlEntity.originalUrl,
+      'EX',
+      this.cacheTtl,
+    );
     return { originalUrl: urlEntity.originalUrl };
   }
 
@@ -79,11 +93,13 @@ export class UrlService {
   ): Promise<{ data: UrlEntity[]; metadata: PaginationMetadata }> {
     const { page, limit, skip } = pagination.parsePage(query);
 
-    const [urls, total] = await this.urlRepo.findAndCount({
-      where: { userId },
-      skip,
-      take: limit,
-    });
+    const [urls, total] = await this.urlRepo
+      .createQueryBuilder('url')
+      .where('url.userId = :userId', { userId })
+      .orderBy('url.createdAt', 'DESC')
+      .skip(skip)
+      .take(limit)
+      .getManyAndCount();
 
     return {
       data: urls,
@@ -113,13 +129,11 @@ export class UrlService {
     }
     url.originalUrl = originalUrl;
     await this.urlRepo.save(url);
+    await this.redis.del(`urls:${url.shortCode}`);
     return { data: url };
   }
 
-  async delete(
-    urlId: string,
-    userId: string,
-  ): Promise<{ message: string }> {
+  async delete(urlId: string, userId: string): Promise<{ message: string }> {
     const urlEntity = await this.urlRepo.findOne({
       where: { id: urlId, userId },
     });
@@ -127,7 +141,7 @@ export class UrlService {
     if (!urlEntity) {
       throw new NotFoundException('URL not found');
     }
-
+    await this.redis.del(`urls:${urlEntity.shortCode}`);
     await this.urlRepo.remove(urlEntity);
     return { message: 'URL deleted successfully' };
   }
