@@ -40,10 +40,16 @@ export class UrlController {
     description: 'Short URL created',
     schema: {
       example: {
-        id: '9c5b7d5e-6c5f-4d3e-9f8d-123456789abc',
-        originalUrl: 'https://www.example.com/articles/nestjs',
-        shortCode: 'aB3xYz',
-        shortUrl: 'http://localhost:3000/aB3xYz',
+        message: 'URL shortened successfully',
+        url: 'https://short.ly/aB3xYz',
+        data: {
+          id: '9c5b7d5e-6c5f-4d3e-9f8d-123456789abc',
+          originalUrl: 'https://www.example.com/articles/nestjs',
+          shortCode: 'aB3xYz',
+          userId: 'user-12345',
+          createdAt: '2024-06-01T12:34:56.789Z',
+          updatedAt: '2024-06-01T12:34:56.789Z',
+        },
       },
     },
   })
@@ -77,9 +83,14 @@ export class UrlController {
     description: 'URL details',
     schema: {
       example: {
-        id: '9c5b7d5e-6c5f-4d3e-9f8d-123456789abc',
-        originalUrl: 'https://www.example.com/articles/nestjs',
-        shortCode: 'aB3xYz',
+        data: {
+          id: '9c5b7d5e-6c5f-4d3e-9f8d-123456789abc',
+          originalUrl: 'https://www.example.com/articles/nestjs',
+          shortCode: 'aB3xYz',
+          userId: 'user-12345',
+          createdAt: '2024-06-01T12:34:56.789Z',
+          updatedAt: '2024-06-01T12:34:56.789Z',
+        },
       },
     },
   })
@@ -92,7 +103,18 @@ export class UrlController {
   @ApiResponse({
     status: 200,
     description: 'URL updated',
-    schema: { example: { message: 'URL updated successfully' } },
+    schema: {
+      example: {
+        data: [{
+          id: '9c5b7d5e-6c5f-4d3e-9f8d-123456789abc',
+          originalUrl: 'https://www.example.com/updated-article',
+          shortCode: 'aB3xYz',
+          userId: 'user-12345',
+          createdAt: '2024-06-01T12:34:56.789Z',
+          updatedAt: '2024-06-01T12:45:00.123Z',
+        }],
+      },
+    },
   })
   async update(
     @Param('id') id: string,
