@@ -10,12 +10,17 @@ import { IAuthUser } from './interfaces/auth.interface';
 import { AuthUser } from './decorators/user.decorator';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('api/auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
+  @Throttle({
+    short: { ttl: 15 * 60 * 1000, limit: 5 },
+    medium: { ttl: 60 * 60 * 1000, limit: 10 },
+  })
   @Public()
   async register(@Body() body: RegisterDto): Promise<{ message: string }> {
     return this.authService.register(body);
@@ -25,21 +30,30 @@ export class AuthController {
   @Public()
   async verifyOtp(
     @Body() verifyOtpDto: VerifyOtpDto,
-  ): Promise<{ message: string; accessToken: string, refreshToken: string }> {
+  ): Promise<{ message: string; accessToken: string; refreshToken: string }> {
     const { email, otp } = verifyOtpDto;
     return this.authService.verifyRegisterOtp(email, otp);
   }
 
   @Post('login')
   @Public()
+  @Throttle({
+    short: { ttl: 15 * 60 * 1000, limit: 5 },
+    medium: { ttl: 60 * 60 * 1000, limit: 15 },
+  })
   async login(
     @Body() loginDto: LoginDto,
-  ): Promise<{ message: string; accessToken: string, refreshToken: string }> {
+  ): Promise<{ message: string; accessToken: string; refreshToken: string }> {
     const { email, password } = loginDto;
     return this.authService.login(email, password);
   }
 
   @Post('refresh-token')
+  @Public()
+  @Throttle({
+    short: { ttl: 15 * 60 * 1000, limit: 2 },
+    medium: { ttl: 60 * 60 * 1000, limit: 5 },
+  })
   async refreshAccessToken(
     @Body() body: RefreshTokenDto,
   ): Promise<{ accessToken: string }> {
@@ -48,6 +62,10 @@ export class AuthController {
 
   @Post('forgot-password')
   @Public()
+  @Throttle({
+    short: { ttl: 10 * 60 * 1000, limit: 2 },
+    medium: { ttl: 60 * 60 * 1000, limit: 5 },
+  })
   async forgotPassword(
     @Body() forgotPasswordDto: ForgetPasswordDto,
   ): Promise<{ message: string }> {
@@ -72,7 +90,7 @@ export class AuthController {
     const { token, newPassword } = resetPasswordDto;
     return this.authService.resetPassword(token, newPassword);
   }
-  
+
   @Post('change-password')
   async changePassword(
     @AuthUser() user: IAuthUser,
@@ -82,7 +100,10 @@ export class AuthController {
   }
 
   @Post('logout')
-  async logout(@AuthUser() user: IAuthUser, @Body('refreshToken') refreshToken: string): Promise<{ message: string }> {
+  async logout(
+    @AuthUser() user: IAuthUser,
+    @Body('refreshToken') refreshToken: string,
+  ): Promise<{ message: string }> {
     return this.authService.logout(user, refreshToken);
   }
 }

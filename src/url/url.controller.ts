@@ -14,12 +14,18 @@ import { UpdateUrlDto } from './dto/update-url.dto';
 import { IAuthUser } from '../auth/interfaces/auth.interface';
 import { AuthUser } from '../auth/decorators/user.decorator';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { Throttle } from '@nestjs/throttler';
 
 @Controller('api/urls')
 export class UrlController {
   constructor(private readonly urlService: UrlService) {}
 
   @Post()
+  @Throttle({
+    short: { ttl: 60 * 1000, limit: 4 },
+    medium: { ttl: 60 * 60 * 1000, limit: 10 },
+    long: { ttl: 24 * 60 * 60 * 1000, limit: 15 },
+  })
   async create(
     @Body() createUrlDto: CreateUrlDto,
     @AuthUser() user: IAuthUser,
