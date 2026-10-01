@@ -1,0 +1,58 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - '${PORT}:${PORT}'
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  migrations:
+    build: .
+    restart: 'no'
+    env_file:
+      - .env
+    command: 'npm run migration:run:prod'
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: 'postgres:16'
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    volumes:
+      - 'url-shortener-pg-data:/var/lib/postgresql/data'
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - 'pg_isready -U ${DB_USER}'
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  redis:
+    image: 'redis:7-alpine'
+    restart: unless-stopped
+    command: 'redis-server --appendonly yes'
+    volumes:
+      - 'url-shortener-redis-data:/data'
+    healthcheck:
+      test:
+        - CMD
+        - redis-cli
+        - ping
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  url-shortener-pg-data:
+  url-shortener-redis-data:
